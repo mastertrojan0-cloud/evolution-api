@@ -265,10 +265,24 @@ export class BaileysStartupService extends ChannelStartupService {
   }
 
   public async logoutInstance() {
+    this.endSession = true;
     this.messageProcessor.onDestroy();
-    await this.client?.logout('Log out instance: ' + this.instanceName);
 
-    this.client?.ws?.close();
+    try {
+      await this.client?.logout('Log out instance: ' + this.instanceName);
+    } catch (error) {
+      this.logger.warn(
+        `logoutInstance: client.logout() failed (${error?.message}), proceeding with credential cleanup`,
+      );
+    }
+
+    try {
+      this.client?.ws?.close();
+    } catch {
+      // ignore — ws may already be closed
+    }
+
+    this.stateConnection = { state: 'close', statusReason: 401 };
 
     const db = this.configService.get<Database>('DATABASE');
     const cache = this.configService.get<CacheConf>('CACHE');
@@ -296,6 +310,11 @@ export class BaileysStartupService extends ChannelStartupService {
     if (sessionExists) {
       await this.prismaRepository.session.delete({ where: { sessionId: this.instanceId } });
     }
+
+    await this.prismaRepository.instance.update({
+      where: { id: this.instanceId },
+      data: { connectionStatus: 'close' },
+    });
   }
 
   public async getProfileName() {
@@ -425,7 +444,7 @@ export class BaileysStartupService extends ChannelStartupService {
 
     if (connection === 'close') {
       const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-      const codesToNotReconnect = [DisconnectReason.loggedOut, DisconnectReason.forbidden, 402, 406];
+      const codesToNotReconnect = [DisconnectReason.loggedOut, DisconnectReason.forbidden, 402, 406, 408];
       const shouldReconnect = !codesToNotReconnect.includes(statusCode);
       if (shouldReconnect) {
         await this.connectToWhatsapp(this.phoneNumber);
@@ -465,6 +484,10 @@ export class BaileysStartupService extends ChannelStartupService {
     }
 
     if (connection === 'open') {
+      if (!this.client?.user?.id) {
+        this.logger.warn('connectionUpdate: connection open but client.user is undefined, skipping');
+        return;
+      }
       this.instance.wuid = this.client.user.id.replace(/:\d+/, '');
       try {
         const profilePic = await this.profilePicture(this.instance.wuid);
