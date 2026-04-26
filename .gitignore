@@ -1,3 +1,7 @@
+# Sensitive
+.env
+*.env
+
 # Repo
 Baileys
 # compiled output

@@ -236,8 +236,8 @@ export class ChatwootService {
         '123456',
         inboxId,
         false,
-        organization ? organization : 'EvolutionAPI',
-        logo ? logo : 'https://evolution-api.com/files/evolution-api-favicon.png',
+        organization ? organization : 'ACM Digital',
+        logo ? logo : 'https://acmdigital.com.br/favicon.png',
       )) as any);
 
     if (!contact) {
